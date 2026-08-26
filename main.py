@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from fastapi import Header
 from fastapi import Depends
+from fastapi.security import HTTPBearer
 
 
 app = FastAPI()
@@ -23,14 +24,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+security = HTTPBearer()
 
-def get_current_user(authorization: str = Header(None, alias="Authorization")):
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Access token required")
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Access token required")
 
-    token = authorization[7:]
+def get_current_user(credentials=Depends(security)):
+    token = credentials.credentials
 
     try:
         user_details = supabase.auth.get_user(token)
@@ -72,7 +70,8 @@ def check_login(request: AuthRequest):
             "password": request.password
         })
         return result
-    except Exception:
+    except Exception as e:
+        print(f"LOGIN ERROR: {e}")
         raise HTTPException(
             status_code=401, detail="invalid login credentials")
 
