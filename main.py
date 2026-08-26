@@ -4,6 +4,8 @@ from fastapi import HTTPException
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from fastapi import Header
+from fastapi import Depends
+
 
 app = FastAPI()
 
@@ -20,6 +22,22 @@ async def lifespan(app: FastAPI):
     print("server shutting down")
 
 app = FastAPI(lifespan=lifespan)
+
+
+def get_current_user(authorization: str = Header(None, alias="Authorization")):
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Access token required")
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Access token required")
+
+    token = authorization[7:]
+
+    try:
+        user_details = supabase.auth.get_user(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    return user_details
 
 
 @app.get("/health")
@@ -60,11 +78,20 @@ def check_login(request: AuthRequest):
 
 
 @app.get("/protected/profile")
-def protected_profile(authorization: str = Header(None, alias="Authorization")):
-    print(f"Received:[{authorization}]")
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Access token required")
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Access token required")
-    else:
-        return {"message": "token looks valid, not yet verified"}
+def protected_profile(user=Depends(get_current_user)):
+    return user
+
+
+@app.get("/protected/dashboard")
+def protect_dashboard(dashboard=Depends(get_current_user)):
+    return dashboard
+
+
+@app.post("/auth/logout", status_code=204)
+def log_out(user=Depends(get_current_user), authorization: str = Header(None, alias="Authorization")):
+    token = authorization[7:]
+
+    try:
+        supabase.auth.sign_out(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
